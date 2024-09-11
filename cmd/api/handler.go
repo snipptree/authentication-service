@@ -46,7 +46,6 @@ func (app *Config) Authenticate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	app.writeJSON(w, http.StatusAccepted, payload)
-
 }
 
 func (app *Config) logRequest(name, data string) error {
