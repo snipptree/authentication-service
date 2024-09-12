@@ -2,86 +2,74 @@ package main
 
 import (
 	"authentication/data"
-	"database/sql"
+	"context"
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"time"
 
-	_ "github.com/jackc/pgconn"
-	_ "github.com/jackc/pgx/v4"
-	_ "github.com/jackc/pgx/v4/stdlib"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const webPort = "80"
+const (
+	webPort  = "80"
+	rpcPort  = "5001"
+	mongoURL = "mongodb+srv://REDACTED_USER:REDACTED_PASSWORD@snipptree-dev.cza8e.mongodb.net/?retryWrites=true&w=majority&appName=snipptree-dev"
+	gRPCPort = "5001"
+)
 
-var counts int64
+var client *mongo.Client
 
 type Config struct {
-	DB     *sql.DB
 	Models data.Models
 }
 
 func main() {
-	log.Println("Starting authentication service...")
+	log.Printf("starting snippet service on PORT %s", webPort)
 
-	conn := connectToDB()
-	if conn == nil {
-		log.Panic("Cannot connect to Postgres!")
+	// connect to mongo
+	mongoClient, err := connectToMongo()
+	if err != nil {
+		log.Panic(err)
 	}
+	client = mongoClient
 
-	//set up config
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	defer func() {
+		if err = client.Disconnect(ctx); err != nil {
+			panic(err)
+		}
+	}()
+
 	app := Config{
-		DB:     conn,
-		Models: data.New(conn),
+		Models: data.New(client),
 	}
 
+	app.Serve()
+}
+
+func (app *Config) Serve() {
 	srv := http.Server{
 		Addr:    fmt.Sprintf(":%s", webPort),
 		Handler: app.routes(),
 	}
-
 	err := srv.ListenAndServe()
 	if err != nil {
 		log.Panic(err)
 	}
 }
 
-func openDB(dsn string) (*sql.DB, error) {
-	db, err := sql.Open("pgx", dsn)
+func connectToMongo() (*mongo.Client, error) {
+	clientOptions := options.Client().ApplyURI(mongoURL)
+
+	c, err := mongo.Connect(context.TODO(), clientOptions)
 	if err != nil {
+		log.Println("error connceting:", err)
 		return nil, err
 	}
-
-	err = db.Ping()
-	if err != nil {
-		return nil, err
-	}
-
-	return db, nil
-}
-
-func connectToDB() *sql.DB {
-	dsn := os.Getenv("DSN")
-
-	for {
-		connection, err := openDB(dsn)
-		if err != nil {
-			log.Println("Postgres not yet ready...")
-			counts++
-		} else {
-			log.Println("Connected to Postgres!")
-			return connection
-		}
-
-		if counts > 10 {
-			log.Println(err)
-			return nil
-		}
-
-		log.Println("Backing off for two seconds...")
-		time.Sleep(2 * time.Second)
-		continue
-	}
+	log.Println("connected to mongo db")
+	return c, nil
 }

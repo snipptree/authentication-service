@@ -7,6 +7,7 @@ import (
 	"log"
 	"time"
 
+	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -14,10 +15,12 @@ const dbTimeout = time.Second * 3
 
 var db *sql.DB
 
+var client *mongo.Client
+
 // New is the function used to create an instance of the data package. It returns the type
 // Model, which embeds all the types we want to be available to our application.
-func New(dbPool *sql.DB) Models {
-	db = dbPool
+func New(mongo *mongo.Client) Models {
+	client = mongo
 
 	return Models{
 		User: User{},
