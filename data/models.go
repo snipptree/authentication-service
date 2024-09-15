@@ -1,111 +1,80 @@
 package data
 
 import (
+	"authentication/constants"
 	"context"
-	"database/sql"
-	"errors"
 	"log"
 	"time"
 
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
-	"golang.org/x/crypto/bcrypt"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const dbTimeout = time.Second * 3
-
-var db *sql.DB
+const dbTimeout = 3 * time.Second
 
 var client *mongo.Client
 
-// New is the function used to create an instance of the data package. It returns the type
-// Model, which embeds all the types we want to be available to our application.
-func New(mongo *mongo.Client) Models {
-	client = mongo
+// New creates an instance of the data package.
+func New(mongoClient *mongo.Client) Models {
+	client = mongoClient
 
 	return Models{
 		User: User{},
 	}
 }
 
-// Models is the type for this package. Note that any model that is included as a member
-// in this type is available to us throughout the application, anywhere that the
-// app variable is used, provided that the model is also added in the New function.
+// Models struct contains the available models.
 type Models struct {
 	User User
 }
 
-// User is the structure which holds one user from the database.
+// User is the structure which holds one user document from the database.
 type User struct {
-	ID        int       `json:"id"`
-	Email     string    `json:"email"`
-	FirstName string    `json:"first_name,omitempty"`
-	LastName  string    `json:"last_name,omitempty"`
-	Password  string    `json:"-"`
-	Active    int       `json:"active"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID            primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
+	Email         string             `bson:"email" json:"email"`
+	FirstName     string             `bson:"first_name,omitempty" json:"first_name,omitempty"`
+	LastName      string             `bson:"last_name,omitempty" json:"last_name,omitempty"`
+	ProfilePicUrl string             `bson:"profile_pic_url,omitempty" json:"profile_pic_url,omitempty"`
+	CreatedAt     time.Time          `bson:"created_at" json:"created_at"`
+	UpdatedAt     time.Time          `bson:"updated_at" json:"updated_at"`
 }
 
-// GetAll returns a slice of all users, sorted by last name
+// GetAll returns a slice of all users, sorted by last name.
 func (u *User) GetAll() ([]*User, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	query := `select id, email, first_name, last_name, password, user_active, created_at, updated_at
-	from users order by last_name`
-
-	rows, err := db.QueryContext(ctx, query)
+	collection := client.Database(constants.DATABASE_NAME).Collection(constants.USERS_COLLECTION)
+	opts := options.Find().SetSort(bson.D{{Key: "last_name", Value: 1}})
+	cursor, err := collection.Find(ctx, bson.D{}, opts)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer cursor.Close(ctx)
 
 	var users []*User
-
-	for rows.Next() {
+	for cursor.Next(ctx) {
 		var user User
-		err := rows.Scan(
-			&user.ID,
-			&user.Email,
-			&user.FirstName,
-			&user.LastName,
-			&user.Password,
-			&user.Active,
-			&user.CreatedAt,
-			&user.UpdatedAt,
-		)
-		if err != nil {
-			log.Println("Error scanning", err)
-			return nil, err
+		if err := cursor.Decode(&user); err != nil {
+			log.Println("Error decoding user:", err)
+			continue
 		}
-
 		users = append(users, &user)
 	}
 
 	return users, nil
 }
 
-// GetByEmail returns one user by email
+// GetByEmail returns one user by email.
 func (u *User) GetByEmail(email string) (*User, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	query := `select id, email, first_name, last_name, password, user_active, created_at, updated_at from users where email = $1`
-
+	collection := client.Database(constants.DATABASE_NAME).Collection(constants.USERS_COLLECTION)
 	var user User
-	row := db.QueryRowContext(ctx, query, email)
-
-	err := row.Scan(
-		&user.ID,
-		&user.Email,
-		&user.FirstName,
-		&user.LastName,
-		&user.Password,
-		&user.Active,
-		&user.CreatedAt,
-		&user.UpdatedAt,
-	)
-
+	err := collection.FindOne(ctx, bson.M{"email": email}).Decode(&user)
 	if err != nil {
 		return nil, err
 	}
@@ -113,27 +82,15 @@ func (u *User) GetByEmail(email string) (*User, error) {
 	return &user, nil
 }
 
-// GetOne returns one user by id
-func (u *User) GetOne(id int) (*User, error) {
+// GetOne returns one user by ID.
+func (u *User) GetOne(userEmail string) (*User, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	query := `select id, email, first_name, last_name, password, user_active, created_at, updated_at from users where id = $1`
+	collection := client.Database(constants.DATABASE_NAME).Collection(constants.USERS_COLLECTION)
 
 	var user User
-	row := db.QueryRowContext(ctx, query, id)
-
-	err := row.Scan(
-		&user.ID,
-		&user.Email,
-		&user.FirstName,
-		&user.LastName,
-		&user.Password,
-		&user.Active,
-		&user.CreatedAt,
-		&user.UpdatedAt,
-	)
-
+	err := collection.FindOne(ctx, bson.M{"email": userEmail}).Decode(&user)
 	if err != nil {
 		return nil, err
 	}
@@ -141,30 +98,23 @@ func (u *User) GetOne(id int) (*User, error) {
 	return &user, nil
 }
 
-// Update updates one user in the database, using the information
-// stored in the receiver u
+// Update updates one user document.
 func (u *User) Update() error {
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	stmt := `update users set
-		email = $1,
-		first_name = $2,
-		last_name = $3,
-		user_active = $4,
-		updated_at = $5
-		where id = $6
-	`
+	collection := client.Database(constants.DATABASE_NAME).Collection(constants.USERS_COLLECTION)
+	filter := bson.M{"_id": u.ID}
+	update := bson.M{
+		"$set": bson.M{
+			"email":      u.Email,
+			"first_name": u.FirstName,
+			"last_name":  u.LastName,
+			"updated_at": time.Now(),
+		},
+	}
 
-	_, err := db.ExecContext(ctx, stmt,
-		u.Email,
-		u.FirstName,
-		u.LastName,
-		u.Active,
-		time.Now(),
-		u.ID,
-	)
-
+	_, err := collection.UpdateOne(ctx, filter, update)
 	if err != nil {
 		return err
 	}
@@ -172,14 +122,18 @@ func (u *User) Update() error {
 	return nil
 }
 
-// Delete deletes one user from the database, by User.ID
-func (u *User) Delete() error {
+// Delete deletes one user document by ID.
+func (u *User) Delete(id string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	stmt := `delete from users where id = $1`
+	collection := client.Database(constants.DATABASE_NAME).Collection(constants.USERS_COLLECTION)
+	objectID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return err
+	}
 
-	_, err := db.ExecContext(ctx, stmt, u.ID)
+	_, err = collection.DeleteOne(ctx, bson.M{"_id": objectID})
 	if err != nil {
 		return err
 	}
@@ -187,85 +141,20 @@ func (u *User) Delete() error {
 	return nil
 }
 
-// DeleteByID deletes one user from the database, by ID
-func (u *User) DeleteByID(id int) error {
+// Insert inserts a new user document into the database and returns the inserted ID.
+func (u *User) Insert(user User) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	stmt := `delete from users where id = $1`
+	collection := client.Database(constants.DATABASE_NAME).Collection(constants.USERS_COLLECTION)
+	user.CreatedAt = time.Now()
+	user.UpdatedAt = time.Now()
 
-	_, err := db.ExecContext(ctx, stmt, id)
+	res, err := collection.InsertOne(ctx, user)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	return nil
-}
-
-// Insert inserts a new user into the database, and returns the ID of the newly inserted row
-func (u *User) Insert(user User) (int, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
-	defer cancel()
-
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), 12)
-	if err != nil {
-		return 0, err
-	}
-
-	var newID int
-	stmt := `insert into users (email, first_name, last_name, password, user_active, created_at, updated_at)
-		values ($1, $2, $3, $4, $5, $6, $7) returning id`
-
-	err = db.QueryRowContext(ctx, stmt,
-		user.Email,
-		user.FirstName,
-		user.LastName,
-		hashedPassword,
-		user.Active,
-		time.Now(),
-		time.Now(),
-	).Scan(&newID)
-
-	if err != nil {
-		return 0, err
-	}
-
-	return newID, nil
-}
-
-// ResetPassword is the method we will use to change a user's password.
-func (u *User) ResetPassword(password string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
-	defer cancel()
-
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), 12)
-	if err != nil {
-		return err
-	}
-
-	stmt := `update users set password = $1 where id = $2`
-	_, err = db.ExecContext(ctx, stmt, hashedPassword, u.ID)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// PasswordMatches uses Go's bcrypt package to compare a user supplied password
-// with the hash we have stored for a given user in the database. If the password
-// and hash match, we return true; otherwise, we return false.
-func (u *User) PasswordMatches(plainText string) (bool, error) {
-	err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(plainText))
-	if err != nil {
-		switch {
-		case errors.Is(err, bcrypt.ErrMismatchedHashAndPassword):
-			// invalid password
-			return false, nil
-		default:
-			return false, err
-		}
-	}
-
-	return true, nil
+	// Return the inserted ID as a string
+	return res.InsertedID.(primitive.ObjectID).Hex(), nil
 }
