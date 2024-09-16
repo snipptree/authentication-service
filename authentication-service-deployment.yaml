@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authentication-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authentication-service
+  template:
+    metadata:
+      labels:
+        app: authentication-service
+    spec:
+      containers:
+      - name: authentication-service
+        image: 727646499255.dkr.ecr.ap-south-1.amazonaws.com/authentication-service:latest
+        # resources:
+        #   requests: 
+        #     cpu: "100m"
+        #     memory: "128Mi"
+        #   limits:
+        #     cpu: "500m"
+        #     memory: "256Mi"
+        resources:
+          requests:
+            cpu: "50m"  # Reduced CPU request
+            memory: "64Mi"  # Reduced memory request
+          limits:
+            cpu: "100m"  # Reduced CPU limit
+            memory: "128Mi"  # Reduced memory limit
+        ports:
+        - containerPort: 80  # authentication service runs on port 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: authentication-service
+spec:
+  type: LoadBalancer  # This exposes the authentication service externally
+  selector:
+    app: authentication-service
+  ports:
+    - protocol: TCP
+      port: 80  # External LoadBalancer Port
+      targetPort: 80  # Port that the pod listens on

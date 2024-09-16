@@ -19,34 +19,30 @@ const (
 	gRPCPort = "5001"
 )
 
-var client *mongo.Client
-
 type Config struct {
-	Models data.Models
+	Repo data.Repository
 }
 
 func main() {
-	log.Printf("starting snippet service on PORT %s", webPort)
+	log.Printf("starting authentication service on PORT %s", webPort)
 
 	// connect to mongo
 	mongoClient, err := connectToMongo()
 	if err != nil {
 		log.Panic(err)
 	}
-	client = mongoClient
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	defer func() {
-		if err = client.Disconnect(ctx); err != nil {
+		if err = mongoClient.Disconnect(ctx); err != nil {
 			panic(err)
 		}
 	}()
 
-	app := Config{
-		Models: data.New(client),
-	}
+	app := Config{}
+	app.setupRepo(mongoClient)
 
 	app.Serve()
 }
@@ -72,4 +68,9 @@ func connectToMongo() (*mongo.Client, error) {
 	}
 	log.Println("connected to mongo db")
 	return c, nil
+}
+
+func (app *Config) setupRepo(client *mongo.Client) {
+	authRepo := data.NewAuthRepository(client)
+	app.Repo = authRepo
 }

@@ -24,7 +24,7 @@ func (app *Config) Authenticate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := app.Models.User.GetByEmail(requestPayload.Email)
+	user, err := app.Repo.GetByEmail(requestPayload.Email)
 	if err != nil {
 		app.errorJSON(w, errors.New("invalid credentials"), http.StatusBadRequest)
 		return
@@ -64,11 +64,11 @@ func (app *Config) SignUp(w http.ResponseWriter, r *http.Request) {
 
 	// Step 2: Check if user exists
 	log.Println("Checking if user already exists")
-	_, err = app.Models.User.GetOne(user.Email)
+	_, err = app.Repo.GetOne(user.Email)
 	if err == mongo.ErrNoDocuments {
 		// Step 3: Insert new user
 		log.Println("Inserting new user:", user.Email)
-		_, err = app.Models.User.Insert(user)
+		_, err = app.Repo.Insert(user)
 		if err != nil {
 			log.Println("Error inserting new user:", err)
 			app.errorJSON(w, err, http.StatusInternalServerError)
@@ -83,6 +83,7 @@ func (app *Config) SignUp(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Println("SignUp flow completed successfully for user:", user.Email)
 		app.writeJSON(w, http.StatusOK, responsePayload)
+		return
 	} else {
 		log.Println("User already exists:", user.Email)
 		responsePayload := jsonResponse{
@@ -90,25 +91,8 @@ func (app *Config) SignUp(w http.ResponseWriter, r *http.Request) {
 			Message: "Login Successful",
 			Data:    user,
 		}
-
-		// Log successful login
-		log.Println("Logging successful login for user:", user.Email)
-		err = app.logRequest("authentication", fmt.Sprintf("%s logged in", user.Email))
-		if err != nil {
-			log.Println("Error logging authentication event:", err)
-			app.errorJSON(w, err)
-			return
-		}
 		log.Println("Login flow completed successfully for user:", user.Email)
 		app.writeJSON(w, http.StatusOK, responsePayload)
-		return
-	}
-
-	log.Println("Logging sign up event for user:", user.Email)
-	err = app.logRequest("authentication", fmt.Sprintf("%s signed up", user.Email))
-	if err != nil {
-		log.Println("Error logging sign-up event:", err)
-		app.errorJSON(w, err)
 		return
 	}
 }

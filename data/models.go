@@ -12,22 +12,16 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const dbTimeout = 3 * time.Second
+const dbTimeout = 5 * time.Second
 
-var client *mongo.Client
-
-// New creates an instance of the data package.
-func New(mongoClient *mongo.Client) Models {
-	client = mongoClient
-
-	return Models{
-		User: User{},
-	}
+type AuthRepository struct {
+	client *mongo.Client
 }
 
-// Models struct contains the available models.
-type Models struct {
-	User User
+func NewAuthRepository(mongoClient *mongo.Client) *AuthRepository {
+	return &AuthRepository{
+		client: mongoClient,
+	}
 }
 
 // User is the structure which holds one user document from the database.
@@ -42,11 +36,11 @@ type User struct {
 }
 
 // GetAll returns a slice of all users, sorted by last name.
-func (u *User) GetAll() ([]*User, error) {
+func (repo *AuthRepository) GetAll() ([]*User, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	collection := client.Database(constants.DATABASE_NAME).Collection(constants.USERS_COLLECTION)
+	collection := repo.client.Database(constants.DATABASE_NAME).Collection(constants.USERS_COLLECTION)
 	opts := options.Find().SetSort(bson.D{{Key: "last_name", Value: 1}})
 	cursor, err := collection.Find(ctx, bson.D{}, opts)
 	if err != nil {
@@ -68,11 +62,11 @@ func (u *User) GetAll() ([]*User, error) {
 }
 
 // GetByEmail returns one user by email.
-func (u *User) GetByEmail(email string) (*User, error) {
+func (repo *AuthRepository) GetByEmail(email string) (*User, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	collection := client.Database(constants.DATABASE_NAME).Collection(constants.USERS_COLLECTION)
+	collection := repo.client.Database(constants.DATABASE_NAME).Collection(constants.USERS_COLLECTION)
 	var user User
 	err := collection.FindOne(ctx, bson.M{"email": email}).Decode(&user)
 	if err != nil {
@@ -83,11 +77,11 @@ func (u *User) GetByEmail(email string) (*User, error) {
 }
 
 // GetOne returns one user by ID.
-func (u *User) GetOne(userEmail string) (*User, error) {
+func (repo *AuthRepository) GetOne(userEmail string) (*User, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	collection := client.Database(constants.DATABASE_NAME).Collection(constants.USERS_COLLECTION)
+	collection := repo.client.Database(constants.DATABASE_NAME).Collection(constants.USERS_COLLECTION)
 
 	var user User
 	err := collection.FindOne(ctx, bson.M{"email": userEmail}).Decode(&user)
@@ -99,17 +93,17 @@ func (u *User) GetOne(userEmail string) (*User, error) {
 }
 
 // Update updates one user document.
-func (u *User) Update() error {
+func (repo *AuthRepository) Update(user User) error {
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	collection := client.Database(constants.DATABASE_NAME).Collection(constants.USERS_COLLECTION)
-	filter := bson.M{"_id": u.ID}
+	collection := repo.client.Database(constants.DATABASE_NAME).Collection(constants.USERS_COLLECTION)
+	filter := bson.M{"_id": user.ID}
 	update := bson.M{
 		"$set": bson.M{
-			"email":      u.Email,
-			"first_name": u.FirstName,
-			"last_name":  u.LastName,
+			"email":      user.Email,
+			"first_name": user.FirstName,
+			"last_name":  user.LastName,
 			"updated_at": time.Now(),
 		},
 	}
@@ -123,11 +117,11 @@ func (u *User) Update() error {
 }
 
 // Delete deletes one user document by ID.
-func (u *User) Delete(id string) error {
+func (repo *AuthRepository) Delete(id string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	collection := client.Database(constants.DATABASE_NAME).Collection(constants.USERS_COLLECTION)
+	collection := repo.client.Database(constants.DATABASE_NAME).Collection(constants.USERS_COLLECTION)
 	objectID, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
 		return err
@@ -142,11 +136,11 @@ func (u *User) Delete(id string) error {
 }
 
 // Insert inserts a new user document into the database and returns the inserted ID.
-func (u *User) Insert(user User) (string, error) {
+func (repo *AuthRepository) Insert(user User) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
-	collection := client.Database(constants.DATABASE_NAME).Collection(constants.USERS_COLLECTION)
+	collection := repo.client.Database(constants.DATABASE_NAME).Collection(constants.USERS_COLLECTION)
 	user.CreatedAt = time.Now()
 	user.UpdatedAt = time.Now()
 
