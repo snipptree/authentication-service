@@ -4,49 +4,46 @@ import (
 	"authentication/data"
 	"bytes"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"log"
 	"net/http"
+	"time"
 
+	"github.com/golang-jwt/jwt/v4"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-func (app *Config) Authenticate(w http.ResponseWriter, r *http.Request) {
-	var requestPayload struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+// Secret key for signing JWT tokens
+var jwtSecret = []byte("REDACTED_JWT_SECRET")
+
+func (app *Config) GenerateJWT(user data.User) (string, error) {
+	claims := jwt.MapClaims{
+		"email": user.Email,
+		"exp":   time.Now().Add(180 * time.Hour * 24).Unix(), // Token expiration time
 	}
 
-	err := app.readJSON(w, r, &requestPayload)
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+	// Sign the token with the secret key
+	signedToken, err := token.SignedString(jwtSecret)
 	if err != nil {
-		app.errorJSON(w, err, http.StatusBadRequest)
-		return
+		return "", err
 	}
-
-	user, err := app.Repo.GetByEmail(requestPayload.Email)
-	if err != nil {
-		app.errorJSON(w, errors.New("invalid credentials"), http.StatusBadRequest)
-		return
-	}
-
-	//log authentication
-	err = app.logRequest("authentication", fmt.Sprintf("%s logged in", user.Email))
-	if err != nil {
-		app.errorJSON(w, err)
-		return
-	}
-
-	payload := jsonResponse{
-		Error:   false,
-		Message: fmt.Sprintf("Logged in user %s", user.Email),
-		Data:    user,
-	}
-
-	app.writeJSON(w, http.StatusAccepted, payload)
+	return signedToken, nil
 }
 
-func (app *Config) SignUp(w http.ResponseWriter, r *http.Request) {
+func ValidateJWT(tokenString string) (*jwt.Token, error) {
+	// Parse the token
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		// Make sure that the token's signing method is HMAC
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, http.ErrAbortHandler
+		}
+		return jwtSecret, nil
+	})
+	return token, err
+}
+
+func (app *Config) Authenticate(w http.ResponseWriter, r *http.Request) {
 	var user data.User
 
 	// Log the start of the SignUp process
@@ -75,21 +72,46 @@ func (app *Config) SignUp(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		log.Println("New user inserted successfully:", user.Email)
-		// Step 4: Log successful sign up
+
+		// Step 4: Generate JWT token
+		token, err := app.GenerateJWT(user)
+		if err != nil {
+			log.Println("Error generating JWT token:", err)
+			app.errorJSON(w, err, http.StatusInternalServerError)
+			return
+		}
+
+		// Step 5: Log successful sign up and send response with JWT
 		responsePayload := jsonResponse{
 			Error:   false,
 			Message: "SignUp Successful",
-			Data:    user,
+			Data: map[string]interface{}{
+				"user":  user,
+				"token": token,
+			},
 		}
 		log.Println("SignUp flow completed successfully for user:", user.Email)
 		app.writeJSON(w, http.StatusOK, responsePayload)
 		return
 	} else {
 		log.Println("User already exists:", user.Email)
+
+		// Step 4: Generate JWT token
+		token, err := app.GenerateJWT(user)
+		if err != nil {
+			log.Println("Error generating JWT token:", err)
+			app.errorJSON(w, err, http.StatusInternalServerError)
+			return
+		}
+
+		// Step 5: Log successful login and send response with JWT
 		responsePayload := jsonResponse{
 			Error:   false,
 			Message: "Login Successful",
-			Data:    user,
+			Data: map[string]interface{}{
+				"user":  user,
+				"token": token,
+			},
 		}
 		log.Println("Login flow completed successfully for user:", user.Email)
 		app.writeJSON(w, http.StatusOK, responsePayload)
