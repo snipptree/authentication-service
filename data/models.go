@@ -31,6 +31,7 @@ type User struct {
 	FirstName     string             `bson:"first_name,omitempty" json:"first_name,omitempty"`
 	LastName      string             `bson:"last_name,omitempty" json:"last_name,omitempty"`
 	ProfilePicUrl string             `bson:"profile_pic_url,omitempty" json:"profile_pic_url,omitempty"`
+	Snippets      []string           `bson:"snippets" json:"snippets"`
 	CreatedAt     time.Time          `bson:"created_at" json:"created_at"`
 	UpdatedAt     time.Time          `bson:"updated_at" json:"updated_at"`
 }
