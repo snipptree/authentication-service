@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	webPort  = "80"
+	webPort  = "8081"
 	rpcPort  = "5001"
 	mongoURL = "mongodb+srv://REDACTED_USER:REDACTED_PASSWORD@snipptree-dev.cza8e.mongodb.net/?retryWrites=true&w=majority&appName=snipptree-dev"
 	gRPCPort = "5001"
