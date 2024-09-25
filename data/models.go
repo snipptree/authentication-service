@@ -28,8 +28,7 @@ func NewAuthRepository(mongoClient *mongo.Client) *AuthRepository {
 type User struct {
 	ID            primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
 	Email         string             `bson:"email" json:"email"`
-	FirstName     string             `bson:"first_name,omitempty" json:"first_name,omitempty"`
-	LastName      string             `bson:"last_name,omitempty" json:"last_name,omitempty"`
+	DisplayName   string             `bson:"display_name,omitempty" json:"display_name,omitempty"`
 	ProfilePicUrl string             `bson:"profile_pic_url,omitempty" json:"profile_pic_url,omitempty"`
 	Snippets      []string           `bson:"snippets" json:"snippets"`
 	CreatedAt     time.Time          `bson:"created_at" json:"created_at"`
@@ -102,10 +101,9 @@ func (repo *AuthRepository) Update(user User) error {
 	filter := bson.M{"_id": user.ID}
 	update := bson.M{
 		"$set": bson.M{
-			"email":      user.Email,
-			"first_name": user.FirstName,
-			"last_name":  user.LastName,
-			"updated_at": time.Now(),
+			"email":        user.Email,
+			"display_name": user.DisplayName,
+			"updated_at":   time.Now(),
 		},
 	}
 
