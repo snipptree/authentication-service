@@ -4,6 +4,7 @@ import (
 	"authentication/data"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -11,6 +12,13 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"go.mongodb.org/mongo-driver/mongo"
 )
+
+type EmailRequest struct {
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Subject string `json:"subject"`
+	Message string `json:"message"`
+}
 
 // Secret key for signing JWT tokens
 var jwtSecret = []byte("REDACTED_JWT_SECRET")
@@ -90,6 +98,12 @@ func (app *Config) Authenticate(w http.ResponseWriter, r *http.Request) {
 				"token": token,
 			},
 		}
+
+		err = app.sendWelcomeEmail(user.Email)
+		if err != nil {
+			log.Printf("error sending welcome email to %v..ignoring the error and continuing", user.Email)
+		}
+
 		log.Println("SignUp flow completed successfully for user:", user.Email)
 		app.writeJSON(w, http.StatusOK, responsePayload)
 		return
@@ -117,6 +131,43 @@ func (app *Config) Authenticate(w http.ResponseWriter, r *http.Request) {
 		app.writeJSON(w, http.StatusOK, responsePayload)
 		return
 	}
+}
+
+func (app *Config) sendWelcomeEmail(userEmail string) error {
+	reqUrl := "http://localhost:8080/comm-service/mail"
+
+	emailRequest := EmailRequest{
+		From:    "snipptree.dev@gmail.com",
+		To:      userEmail,
+		Subject: "Welcome to SnippTree",
+		Message: "You are one step ahead into the world of Code Snippets",
+	}
+
+	reqBody, err := json.Marshal(emailRequest)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, reqUrl, bytes.NewBuffer(reqBody))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	// Send the request using the default HTTP client
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send email: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to send welcome to email, status code: %d", resp.StatusCode)
+	}
+
+	return nil
 }
 
 func (app *Config) logRequest(name, data string) error {
