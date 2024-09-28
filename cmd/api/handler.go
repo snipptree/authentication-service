@@ -4,6 +4,7 @@ import (
 	"authentication/data"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -11,6 +12,13 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"go.mongodb.org/mongo-driver/mongo"
 )
+
+type EmailRequest struct {
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Subject string `json:"subject"`
+	Message string `json:"message"`
+}
 
 // Secret key for signing JWT tokens
 var jwtSecret = []byte("REDACTED_JWT_SECRET")
@@ -90,6 +98,12 @@ func (app *Config) Authenticate(w http.ResponseWriter, r *http.Request) {
 				"token": token,
 			},
 		}
+
+		err = app.sendWelcomeEmail(user.Email)
+		if err != nil {
+			log.Printf("error sending welcome email to %v..ignoring the error and continuing, err: %v", user.Email, err)
+		}
+
 		log.Println("SignUp flow completed successfully for user:", user.Email)
 		app.writeJSON(w, http.StatusOK, responsePayload)
 		return
@@ -117,6 +131,68 @@ func (app *Config) Authenticate(w http.ResponseWriter, r *http.Request) {
 		app.writeJSON(w, http.StatusOK, responsePayload)
 		return
 	}
+}
+
+func (app *Config) sendWelcomeEmail(userEmail string) error {
+	reqUrl := "http://broker-service/comm-service/mail"
+
+	// Logging the start of the function
+	log.Printf("Starting to send welcome email to: %s", userEmail)
+
+	// Create email request body
+	emailRequest := EmailRequest{
+		From:    "noreply@snipptree.com",
+		To:      userEmail,
+		Subject: "Welcome to SnippTree",
+		Message: fmt.Sprintf("Welcome %v, to world of Code Snippets", userEmail),
+	}
+
+	// Log the request data
+	log.Printf("Preparing email request: %+v", emailRequest)
+
+	// Marshal the request body to JSON
+	reqBody, err := json.Marshal(emailRequest)
+	if err != nil {
+		log.Printf("Error marshaling request body: %v", err)
+		return fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	// Create a new POST request
+	req, err := http.NewRequest(http.MethodPost, reqUrl, bytes.NewBuffer(reqBody))
+	if err != nil {
+		log.Printf("Error creating HTTP request: %v", err)
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set content-type header to application/json
+	req.Header.Set("Content-Type", "application/json")
+	log.Printf("Request created successfully, sending email...")
+
+	// Send the request using the default HTTP client
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Error sending email: %v", err)
+		return fmt.Errorf("failed to send email: %w", err)
+	}
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			log.Printf("Error closing response body: %v", cerr)
+		}
+	}()
+
+	// Log the response status
+	log.Printf("Received response with status code: %d", resp.StatusCode)
+
+	// Check if the response status is OK (200)
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Failed to send email, received status code: %d", resp.StatusCode)
+		return fmt.Errorf("failed to send welcome email, status code: %d", resp.StatusCode)
+	}
+
+	// Success log
+	log.Printf("Welcome email successfully sent to %s", userEmail)
+	return nil
 }
 
 func (app *Config) logRequest(name, data string) error {
