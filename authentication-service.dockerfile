@@ -1,7 +1,5 @@
 FROM alpine:latest
-
-RUN mkdir /app
-
-COPY authApp /app
-
-CMD ["/app/authApp"]
+WORKDIR /app
+COPY authApp /app/authApp
+EXPOSE 80
+CMD ["./authApp"]
