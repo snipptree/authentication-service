@@ -25,8 +25,9 @@ var jwtSecret = []byte("REDACTED_JWT_SECRET")
 
 func (app *Config) GenerateJWT(user data.User) (string, error) {
 	claims := jwt.MapClaims{
-		"email": user.Email,
-		"exp":   time.Now().Add(180 * time.Hour * 24).Unix(), // Token expiration time
+		"email":  user.Email,
+		"userId": user.ID.Hex(),
+		"exp":    time.Now().Add(180 * time.Hour * 24).Unix(), // Token expiration time
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
