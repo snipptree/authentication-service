@@ -1,7 +1,9 @@
 package data
 
+import "go.mongodb.org/mongo-driver/bson/primitive"
+
 type Repository interface {
-	Insert(user User) (string, error)
+	Insert(user User) (primitive.ObjectID, error)
 	GetAll() ([]*User, error)
 	GetByEmail(email string) (*User, error)
 	GetOne(userEmail string) (*User, error)

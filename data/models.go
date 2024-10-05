@@ -135,7 +135,7 @@ func (repo *AuthRepository) Delete(id string) error {
 }
 
 // Insert inserts a new user document into the database and returns the inserted ID.
-func (repo *AuthRepository) Insert(user User) (string, error) {
+func (repo *AuthRepository) Insert(user User) (primitive.ObjectID, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), dbTimeout)
 	defer cancel()
 
@@ -145,9 +145,9 @@ func (repo *AuthRepository) Insert(user User) (string, error) {
 
 	res, err := collection.InsertOne(ctx, user)
 	if err != nil {
-		return "", err
+		return primitive.ObjectID{}, err
 	}
 
 	// Return the inserted ID as a string
-	return res.InsertedID.(primitive.ObjectID).Hex(), nil
+	return res.InsertedID.(primitive.ObjectID), nil
 }

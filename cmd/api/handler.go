@@ -24,6 +24,8 @@ type EmailRequest struct {
 var jwtSecret = []byte("REDACTED_JWT_SECRET")
 
 func (app *Config) GenerateJWT(user data.User) (string, error) {
+	log.Println("user.ID.Hex()")
+	log.Println(user.ID.Hex())
 	claims := jwt.MapClaims{
 		"email":  user.Email,
 		"userId": user.ID.Hex(),
@@ -74,7 +76,10 @@ func (app *Config) Authenticate(w http.ResponseWriter, r *http.Request) {
 	if err == mongo.ErrNoDocuments {
 		// Step 3: Insert new user
 		log.Println("Inserting new user:", user.Email)
-		_, err = app.Repo.Insert(user)
+		insertedId, err := app.Repo.Insert(user)
+		log.Println("insertedId")
+		log.Println(insertedId)
+		user.ID = insertedId
 		if err != nil {
 			log.Println("Error inserting new user:", err)
 			app.errorJSON(w, err, http.StatusInternalServerError)
@@ -111,7 +116,15 @@ func (app *Config) Authenticate(w http.ResponseWriter, r *http.Request) {
 	} else {
 		log.Println("User already exists:", user.Email)
 
+		dbUser, err := app.Repo.GetByEmail(user.Email)
+		if err != nil {
+			log.Println("Error GetByEmail:", err)
+			app.errorJSON(w, err, http.StatusInternalServerError)
+			return
+		}
+
 		// Step 4: Generate JWT token
+		user.ID = dbUser.ID
 		token, err := app.GenerateJWT(user)
 		if err != nil {
 			log.Println("Error generating JWT token:", err)
