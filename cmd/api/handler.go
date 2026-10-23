@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -21,7 +22,7 @@ type EmailRequest struct {
 }
 
 // Secret key for signing JWT tokens
-var jwtSecret = []byte("REDACTED_JWT_SECRET")
+var jwtSecret = []byte(os.Getenv("JWT_SECRET"))
 
 func (app *Config) GenerateJWT(user data.User) (string, error) {
 	log.Println("user.ID.Hex()")
